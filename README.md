@@ -1,2 +1,2 @@
 # ComputationalPhysicsLaboratory2023
-Repository for the exercises of the computational physics laboratory course
+Repository for the exercises of the computational physics laboratory course (in progress)
