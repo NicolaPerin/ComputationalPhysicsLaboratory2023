@@ -1,5 +1,5 @@
 FC=gfortran
-FFLAGS=-Wall -O2
+FFLAGS=-Wall -O3
 SRCS=$(wildcard *.f90)
 OBJS=$(SRCS:.f90=.o)
 EXES=$(SRCS:.f90=.x)
