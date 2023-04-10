@@ -98,5 +98,3 @@ program parallel_walkers
     call MPI_Finalize(ierr)
 
 end program parallel_walkers
-
-! mpif90 -march=native -O2 -fcheck=all utils.f90 parallel_walkers.f90 -o parallel_walkers
