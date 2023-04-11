@@ -38,10 +38,10 @@ program parallel_walkers
     call random_seed(put=seed)
 
     call random_number(r) ! Generate a random array whose elements will be used as seed components (O(nruns))
-    ! Apparently Fortran has list comprehensions but you can't do +=
+    ! Apparently Fortran has list comprehensions but you can't do things like +=
     all_seeds = [(floor(sizer * nruns * r(i)), i = 1, sizer * nruns)]
 
-    start_time = MPI_Wtime()
+    start_time = MPI_Wtime() ! Profiling
 
     ! The computation is carried out in parallel by many processes
     ! This is the heaviest part of the program, having to do nruns * N iterations (easily 10^9-10^10)
@@ -75,6 +75,7 @@ program parallel_walkers
     call MPI_Reduce(x_i, sum_x_i, N, MPI_DOUBLE_PRECISION, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
     call MPI_Reduce(x2_i, sum_x2_i, N, MPI_DOUBLE_PRECISION, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
     call MPI_Reduce(P_N, sum_P_N, 2*N+1, MPI_DOUBLE_PRECISION, MPI_SUM, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
     end_time = MPI_Wtime()
     comm = end_time - start_time
 
