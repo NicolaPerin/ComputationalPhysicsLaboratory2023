@@ -71,14 +71,13 @@ module write
         subroutine WriteDelta(N, nruns, sum_x_i, sum_x2_i)
             integer, intent(in) :: N, nruns
             integer(kind=int64), dimension(:), allocatable, intent(in) :: sum_x_i, sum_x2_i
-            integer :: i
             real(kind=dp) :: delta
 
             ! Calculate the accuracy of the mean square displacement (points c and e of the exercise) (O(1))
-            delta = real(sum_x2_i(N),kind=dp) / nruns - (real(sum_x_i(N),kind=dp) / nruns)**2.0_dp
-            print*, "Delta:", abs(delta / N - 1.0_dp)
+            delta = real(sum_x2_i(N),kind=dp) / nruns - (real(sum_x_i(N),kind=dp) / nruns)**2
+            print*, "Delta:", abs(delta / N - 1.0_dp) ! N is the theoretical value (4*0.5*0.5*N*1)
             open(unit=12, file='delta.txt', position='append', action='write')
-            write(12,*) nruns, N, abs(delta / real(N,kind=dp) - 1.0_dp)
+            write(12,*) N, nruns, abs(delta / N - 1.0_dp)
             close(12)
         end subroutine WriteDelta
 
@@ -88,7 +87,7 @@ module write
 
             ! Write the timings in a file (O(1))
             open(unit=11, file='scalability.txt', position='append', action='write')
-            write(11,*) size, nruns, N, comp, comm, writ
+            write(11,*) size, N, nruns, comp, comm, writ
             close(11)
             print*, "Computation time:", comp, "s"
             print*, "Communication time:", comm, "s"
