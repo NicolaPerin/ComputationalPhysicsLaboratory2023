@@ -179,12 +179,13 @@ module Dynamic
 
     end subroutine Streaming
 
-    subroutine Collision(Lattice, newLattice, Lx, Ly, avg_vel_site)
+    subroutine Collision(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
 
-        integer :: i, j, k
-        integer, intent(in) :: Lx, Ly
+        integer :: i, j, k, l
+        real :: block_sum_x, block_sum_y
+        integer, intent(in) :: Lx, Ly, cell_size
         integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
-        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
+        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site, avg_vel_cell
 
         ! Collision step: handle interactions between particles.
         ! In this step, collisions between particles are resolved according to a predefined set of collision rules. 
@@ -205,19 +206,33 @@ module Dynamic
                 avg_vel_site(i,j,2) = vy / 6.
             end do
         end do
+
+        do k = 0, Lx / cell_size - 1
+            do l = 0, Ly / cell_size - 1
+                block_sum_x = 0.0; block_sum_y = 0.0
+                do i = k * cell_size, (k + 1) * cell_size - 1
+                    do j = l * cell_size, (l + 1) * cell_size - 1
+                        block_sum_x = block_sum_x + avg_vel_site(i, j, 1)
+                        block_sum_y = block_sum_y + avg_vel_site(i, j, 2)
+                    end do
+                end do
+                avg_vel_cell(k, l, 1) = block_sum_x / (cell_size * cell_size)
+                avg_vel_cell(k, l, 2) = block_sum_y / (cell_size * cell_size)
+            end do
+        end do
         !newLattice = 0
     end subroutine Collision
 
-    subroutine WriteVfield(Lx, Ly, avg_vel_site, it)
+    subroutine WriteVfield(Lx, Ly, avg_vel, it)
         integer :: i, j
         integer, intent(in) :: Lx, Ly, it
-        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
+        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel
 
         write(filename, '(A, I0, A)') 'avg_vel_', it, '.dat'
         open(10, file=filename, status='replace')
         do j = 0, Ly - 1
             do i = 0, Lx - 1
-                write(10, '(2I5, 2F10.6)') i, j, avg_vel_site(i, j, 1), avg_vel_site(i, j, 2)
+                write(10, '(2I5, 2F10.6)') i, j, avg_vel(i, j, 1), avg_vel(i, j, 2)
             end do
             write(10, *)
         end do
@@ -260,9 +275,10 @@ program FHP1
     call cpu_time(start_time)
     do it = 1, nit
         call Streaming(lattice, newLattice, Lx, Ly)
-        call Collision(Lattice, newLattice, Lx, Ly, avg_vel_site)
+        call Collision(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
         if ( mod(it, frames) == 0 ) then
-            call WriteVfield(Lx, Ly, avg_vel_site, it / frames)
+            !call WriteVfield(Lx, Ly, avg_vel_site, it / frames)
+            call WriteVfield(Lx/cell_size, Ly/cell_size, avg_vel_cell, it / frames)
         end if
     end do
     call cpu_time(end_time)
