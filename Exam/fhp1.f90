@@ -17,7 +17,7 @@ module Variables
     integer(1), dimension(0: NUM_RULES - 1) :: rules = 0
 
     real :: start_time, end_time
-    real, parameter :: density = 0.2, SQRT3_OVER2 = sqrt(3.0) / 2.0
+    real, parameter :: density = 0.6, SQRT3_OVER2 = sqrt(3.0) / 2.0
     real, dimension(6), parameter :: ux = (/1.0, 0.5, -0.5, -1.0, -0.5, 0.5/)
     real, dimension(6), parameter :: uy = (/0.0, -SQRT3_OVER2, -SQRT3_OVER2, 0.0, SQRT3_OVER2, SQRT3_OVER2/)
     real :: vx = 0. ! averaged x velocity for every site configuration
@@ -91,12 +91,14 @@ module Dynamic
         do i = 0, Lx - 1
             do j = 0, Ly - 1
                 call random_number(r)
-                if (r < density / 2.0) then
+                if (r < density / 8.0) then
                     Lattice(i, j) = ior(ior(RU, LE), RD)
+                else if (density / 8.0 <= r .and. r < density / 4.0) then
+                    Lattice(i, j) = ior(ior(LU, LD), RI)
                 else if (r > density) then
                     Lattice(i, j) = 0
                 else 
-                    Lattice(i, j) = ior(ior(LU, LD), RI)
+                    Lattice(i, j) = RI
                 end if
             end do
         end do
@@ -111,10 +113,10 @@ module Dynamic
 
         do i = 1, Lx - 2
             do j = 0, Ly / 5
-                Lattice(i, j) = RD
+                Lattice(i, j) = RI
             end do
             do j = 4 * Ly / 5, Ly - 1
-                Lattice(i, j) = LU
+                Lattice(i, j) = LE
             end do
         end do
 
@@ -220,7 +222,6 @@ module Dynamic
                 avg_vel_cell(k, l, 2) = block_sum_y / (cell_size * cell_size)
             end do
         end do
-        !newLattice = 0
     end subroutine Collision
 
     subroutine WriteVfield(Lx, Ly, avg_vel, it)
