@@ -17,12 +17,13 @@ module Variables
     integer(1), dimension(0: NUM_RULES - 1) :: rules = 0
 
     real :: start_time, end_time
-    real, parameter :: density = 0.4, SQRT3_OVER2 = sqrt(3.0) / 2.0
+    real, parameter :: density = 0.2, SQRT3_OVER2 = sqrt(3.0) / 2.0
     real, dimension(6), parameter :: ux = (/1.0, 0.5, -0.5, -1.0, -0.5, 0.5/)
     real, dimension(6), parameter :: uy = (/0.0, -SQRT3_OVER2, -SQRT3_OVER2, 0.0, SQRT3_OVER2, SQRT3_OVER2/)
     real :: vx = 0. ! averaged x velocity for every site configuration
     real :: vy = 0. ! averaged y velocity for every site configuration
-    real, dimension(:,:,:), allocatable :: avg_velocity
+
+    character(len=20) :: filename
 
     contains
 
@@ -45,11 +46,11 @@ module printing
 
     contains
 
-    subroutine stampatutto(Lattice, newLattice, Lx, Ly, avg_velocity)
+    subroutine stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site)
         integer :: i, j
         integer, intent(in) :: Lx, Ly
         integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
-        real, dimension(:,:,:), allocatable, intent(inout) :: avg_velocity
+        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
         do i = 0, Lx - 1
             do j = 0, Ly - 1
                 write(*, '(I3.3, A)', advance='no') Lattice(i, j), ' '
@@ -66,7 +67,7 @@ module printing
         write(*,*)
         do i = 0, Lx - 1
             do j = 0, Ly - 1
-                write(*,'(A,F0.2,A,F0.2,A)', advance='no') '(', avg_velocity(i,j,1), ',', avg_velocity(i,j,2), ')'
+                write(*,'(A,F0.2,A,F0.2,A)', advance='no') '(', avg_vel_site(i,j,1), ',', avg_vel_site(i,j,2), ')'
             end do
             write(*,*)
         end do
@@ -178,12 +179,12 @@ module Dynamic
 
     end subroutine Streaming
 
-    subroutine Collision(Lattice, newLattice, Lx, Ly, avg_velocity)
+    subroutine Collision(Lattice, newLattice, Lx, Ly, avg_vel_site)
 
         integer :: i, j, k
         integer, intent(in) :: Lx, Ly
         integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
-        real, dimension(:,:,:), allocatable, intent(inout) :: avg_velocity
+        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
 
         ! Collision step: handle interactions between particles.
         ! In this step, collisions between particles are resolved according to a predefined set of collision rules. 
@@ -200,12 +201,29 @@ module Dynamic
                         vy = vy + uy(k+1)
                     end if
                 end do
-                avg_velocity(i,j,1) = vx / 6.
-                avg_velocity(i,j,2) = vy / 6.
+                avg_vel_site(i,j,1) = vx / 6.
+                avg_vel_site(i,j,2) = vy / 6.
             end do
         end do
         !newLattice = 0
     end subroutine Collision
+
+    subroutine WriteVfield(Lx, Ly, avg_vel_site, it)
+        integer :: i, j
+        integer, intent(in) :: Lx, Ly, it
+        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
+
+        write(filename, '(A, I0, A)') 'avg_vel_', it, '.dat'
+        open(10, file=filename, status='replace')
+        do j = 0, Ly - 1
+            do i = 0, Lx - 1
+                write(10, '(2I5, 2F10.6)') i, j, avg_vel_site(i, j, 1), avg_vel_site(i, j, 2)
+            end do
+            write(10, *)
+        end do
+        close(10)
+
+    end subroutine WriteVfield
 
 end module Dynamic
 
@@ -214,18 +232,27 @@ program FHP1
     use Dynamic
     implicit none
 
-    integer :: Lx, Ly, i, j, it, nit, unit = 10
+    integer :: Lx, Ly, it, nit, cell_size, frames
     integer(1), dimension(:,:), allocatable :: Lattice, newLattice
-    character(len=20) :: filename
+    real, dimension(:,:,:), allocatable :: avg_vel_site, avg_vel_cell
 
     character(len=32) :: arg
-    call get_command_argument(1, arg); read(arg, *) Lx  ! Number of rows
-    call get_command_argument(2, arg); read(arg, *) Ly  ! Number of columns
-    call get_command_argument(3, arg); read(arg, *) nit ! Number of iterations
+    call get_command_argument(1, arg); read(arg, *) Lx        ! Number of rows
+    call get_command_argument(2, arg); read(arg, *) Ly        ! Number of columns
+    call get_command_argument(3, arg); read(arg, *) nit       ! Number of iterations
+    call get_command_argument(4, arg); read(arg, *) cell_size ! Size of the cell for averaging velocities
+    call get_command_argument(5, arg); read(arg, *) frames    ! Every how many iterations save the vfield
 
-    allocate(Lattice(0:Lx-1, 0:Ly-1), newLattice(0:Lx-1, 0:Ly-1), avg_velocity(0:Lx-1,0:Ly-1,2))
-    Lattice = 0; newLattice = 0; avg_velocity = 0.
+    ! Check if the lattice dimensions are multiple of the cell size
+    if ( mod(Lx, cell_size) /= 0 .or. mod(Ly, cell_size) /= 0) then
+        print*, "Bad combination of lattice size and cell size"
+        stop
+    end if
 
+    allocate(Lattice(0:Lx-1, 0:Ly-1), newLattice(0:Lx-1, 0:Ly-1))
+    allocate(avg_vel_site(0 : Lx-1, 0 : Ly-1, 2), avg_vel_cell(0 : Lx/cell_size-1, 0 : Ly/cell_size-1, 2))
+    Lattice = 0; newLattice = 0; avg_vel_site = 0.; avg_vel_cell = 0.
+    
     call InitRules() ! Create the collision rules
     call InitLattice1(Lattice, Lx, Ly)
 
@@ -233,20 +260,14 @@ program FHP1
     call cpu_time(start_time)
     do it = 1, nit
         call Streaming(lattice, newLattice, Lx, Ly)
-        call Collision(Lattice, newLattice, Lx, Ly, avg_velocity)
-        write(filename, '(A, I0, A)') 'avg_vel_', it, '.dat'
-        open(unit, file=filename, status='replace')
-        do j = 0, Ly - 1
-            do i = 0, Lx - 1
-                write(10, '(2I5, 2F10.6)') i, j, avg_velocity(i, j, 1), avg_velocity(i, j, 2)
-            end do
-            write(10, *)
-        end do
-        close(10)
+        call Collision(Lattice, newLattice, Lx, Ly, avg_vel_site)
+        if ( mod(it, frames) == 0 ) then
+            call WriteVfield(Lx, Ly, avg_vel_site, it / frames)
+        end if
     end do
     call cpu_time(end_time)
     print*, "Evolve time:", end_time - start_time
 
-    !call stampatutto(Lattice, newLattice, Lx, Ly, avg_velocity)
+    !call stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site)
 
 end program FHP1
