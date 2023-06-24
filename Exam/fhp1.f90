@@ -2,22 +2,22 @@ module Variables
     implicit none
     
     ! Define directions as 8-bit integers
-    integer(1), parameter :: RI     = 1  ! 00000001
-    integer(1), parameter :: RD     = 2  ! 00000010
-    integer(1), parameter :: LD     = 4  ! 00000100
-    integer(1), parameter :: LE     = 8  ! 00001000
-    integer(1), parameter :: LU     = 16 ! 00010000
-    integer(1), parameter :: RU     = 32 ! 00100000
-    integer(1), parameter :: FULL   = 63 ! 00111111
+    integer, parameter :: RI     = 1  ! 00000001
+    integer, parameter :: RD     = 2  ! 00000010
+    integer, parameter :: LD     = 4  ! 00000100
+    integer, parameter :: LE     = 8  ! 00001000
+    integer, parameter :: LU     = 16 ! 00010000
+    integer, parameter :: RU     = 32 ! 00100000
+    integer, parameter :: FULL   = 63 ! 00111111
 
     ! define the collision rules
-    integer(1), dimension(6), parameter :: dir = (/RI, RD, LD, LE, LU, RU/)
-    integer(1), parameter :: NUM_RULES = 2**6
-    integer(1), parameter :: NUM_DIRS = 6
-    integer(1), dimension(0: NUM_RULES - 1) :: rules = 0
+    integer, dimension(6), parameter :: dir = (/RI, RD, LD, LE, LU, RU/)
+    integer, parameter :: NUM_RULES = 2**6
+    integer, parameter :: NUM_DIRS = 6
+    integer, dimension(0: NUM_RULES - 1) :: rules1 = 0, rules2 = 0
 
     real :: start_time, end_time
-    real, parameter :: density = 0.6, SQRT3_OVER2 = sqrt(3.0) / 2.0
+    real, parameter :: density = 0.5, SQRT3_OVER2 = sqrt(3.0) / 2.0
     real, dimension(6), parameter :: ux = (/1.0, 0.5, -0.5, -1.0, -0.5, 0.5/)
     real, dimension(6), parameter :: uy = (/0.0, -SQRT3_OVER2, -SQRT3_OVER2, 0.0, SQRT3_OVER2, SQRT3_OVER2/)
     real :: vx = 0. ! averaged x velocity for every site configuration
@@ -27,15 +27,31 @@ module Variables
 
     contains
 
-    subroutine InitRules()
+    subroutine InitRules() ! Two sets of rules
+
+        integer :: i
+
+        ! Set default rules: the particle keeps moving unperturbed if no collision
+        do i = 0, NUM_RULES - 1
+            rules1(i) = i; rules2(i) = i
+        end do
+
         ! two particles cyclic rules
-        rules(ior(LE, RI)) = ior(RU, LD) ! rule(9)  = 36
-        rules(ior(RU, LD)) = ior(LU, RD) ! rule(36) = 18
-        rules(ior(LU, RD)) = ior(LE, RI) ! rule(18) = 9
+        rules1(ior(LE, RI)) = ior(RU, LD) ! rule(9)  = 36
+        rules1(ior(RU, LD)) = ior(LU, RD) ! rule(36) = 18
+        rules1(ior(LU, RD)) = ior(LE, RI) ! rule(18) = 9
+
+        rules2(ior(LE, RI)) = ior(LU, RD)
+        rules2(ior(LU, RD)) = ior(RU, LD)
+        rules2(ior(RU, LD)) = ior(LE, RI) 
 
         ! three particles zero-momentum rules
-        rules(ior(ior(LU, LD), RI)) = ior(ior(RU, LE), RD) ! rule(21) = 42
-        rules(ior(ior(RU, LE), RD)) = ior(ior(LU, LD), RI) ! rule(42) = 21
+        rules1(ior(ior(LU, LD), RI)) = ior(ior(RU, LE), RD) ! rule(21) = 42
+        rules1(ior(ior(RU, LE), RD)) = ior(ior(LU, LD), RI) ! rule(42) = 21
+
+        rules2(ior(ior(LU, LD), RI)) = ior(ior(RU, LE), RD) ! rule(21) = 42
+        rules2(ior(ior(RU, LE), RD)) = ior(ior(LU, LD), RI) ! rule(42) = 21
+
     end subroutine InitRules
 
 end module Variables
@@ -49,7 +65,7 @@ module printing
     subroutine stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site)
         integer :: i, j
         integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
         real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
         do i = 0, Lx - 1
             do j = 0, Ly - 1
@@ -86,7 +102,7 @@ module Dynamic
         integer :: i, j
         real :: r
         integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
 
         do i = 0, Lx - 1
             do j = 0, Ly - 1
@@ -109,13 +125,15 @@ module Dynamic
         integer :: i, j
         real :: r
         integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
 
-        do i = 1, Lx - 2
-            do j = 0, Ly / 5
+        do i = Lx / 4 - 1, Lx / 2 + Lx / 10
+            do j = 0, Ly / 4 - 1
                 Lattice(i, j) = RI
             end do
-            do j = 4 * Ly / 5, Ly - 1
+        end do
+        do i = Lx / 2 - Lx / 10, 3 * Lx / 4
+            do j = 3 * Ly / 4, Ly - 1
                 Lattice(i, j) = LE
             end do
         end do
@@ -126,7 +144,7 @@ module Dynamic
         integer :: i, j
         real :: r
         integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
 
         do i = 3 * Lx / 8, 5 * Lx / 8
             do j = 3* Ly / 8, 5 * Ly / 8
@@ -136,11 +154,13 @@ module Dynamic
 
     end subroutine InitLattice3
 
-    subroutine Streaming(Lattice, newLattice, Lx, Ly)
+    subroutine Collision(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
 
-        integer :: i, j
-        integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
+        integer :: i, j, k, l
+        real :: block_sum_x, block_sum_y, norm
+        integer, intent(in) :: Lx, Ly, cell_size
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
+        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site, avg_vel_cell
 
         ! Streaming step: the particles in the lattice are moved to their neighboring lattice sites 
         ! based on their current direction of motion. 
@@ -153,9 +173,7 @@ module Dynamic
         !                       RI        RD         LD         LE         LU         RU
         ! Odd row: (i, j) -> (i, j+1), (i+1, j), (i+1, j-1), (i, j-1), (i-1, j-1), (i-1, j)
         ! Even row:(i, j) -> (i, j+1), (i+1, j+1), (i+1, j), (i, j-1), (i-1, j), (i-1, j+1)
-        ! There is a smart way of doing it: we update two consecutive lattice sites at once
-        ! we loop j in increments of 2 in order to decrease reads and writes of neighbours
-        newLattice = 0
+
         do j = 0, Ly - 1
             do i = 0, Lx - 1
                 if (mod(i,2) == 0) then ! even row
@@ -177,29 +195,23 @@ module Dynamic
             end do
         end do
 
-        lattice = newLattice
-
-    end subroutine Streaming
-
-    subroutine Collision(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
-
-        integer :: i, j, k, l
-        real :: block_sum_x, block_sum_y
-        integer, intent(in) :: Lx, Ly, cell_size
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
-        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site, avg_vel_cell
-
         ! Collision step: handle interactions between particles.
         ! In this step, collisions between particles are resolved according to a predefined set of collision rules. 
         ! Each collision rule defines the new particle configurations based on the current configurations of neighboring particles. 
         ! The collision rules determine the outcome of particle interactions, including changes in particle directions and velocities.
+        
         do i = 0, Lx - 1
             do j = 0, Ly - 1
-                newLattice(i, j) = rules(Lattice(i, j))
+                if ( mod(i * (Lx - 1) + j, 2) == 0  ) then
+                    Lattice(i, j) = rules1(newLattice(i, j))
+                else 
+                    Lattice(i, j) = rules2(newLattice(i, j))
+                end if
+                newLattice(i, j) = 0
                 ! Compute avg velocity components at current lattice site
                 vx = 0.; vy = 0.
                 do k = 0, 5
-                    if ( iand(Lattice(i,j), ishft(int(1, int8), k)) /= 0 ) then
+                    if ( iand(Lattice(i, j), ishft(1, k)) /= 0 ) then
                         vx = vx + ux(k+1)
                         vy = vy + uy(k+1)
                     end if
@@ -209,6 +221,7 @@ module Dynamic
             end do
         end do
 
+        norm = real(cell_size * cell_size)
         do k = 0, Lx / cell_size - 1
             do l = 0, Ly / cell_size - 1
                 block_sum_x = 0.0; block_sum_y = 0.0
@@ -218,8 +231,8 @@ module Dynamic
                         block_sum_y = block_sum_y + avg_vel_site(i, j, 2)
                     end do
                 end do
-                avg_vel_cell(k, l, 1) = block_sum_x / (cell_size * cell_size)
-                avg_vel_cell(k, l, 2) = block_sum_y / (cell_size * cell_size)
+                avg_vel_cell(k, l, 1) = block_sum_x / norm
+                avg_vel_cell(k, l, 2) = block_sum_y / norm
             end do
         end do
     end subroutine Collision
@@ -245,11 +258,12 @@ end module Dynamic
 
 program FHP1
     use Variables
+    use printing
     use Dynamic
     implicit none
 
     integer :: Lx, Ly, it, nit, cell_size, frames
-    integer(1), dimension(:,:), allocatable :: Lattice, newLattice
+    integer, dimension(:,:), allocatable :: Lattice, newLattice
     real, dimension(:,:,:), allocatable :: avg_vel_site, avg_vel_cell
 
     character(len=32) :: arg
@@ -275,7 +289,7 @@ program FHP1
     ! Evolution of the system
     call cpu_time(start_time)
     do it = 1, nit
-        call Streaming(lattice, newLattice, Lx, Ly)
+        !call Streaming(lattice, newLattice, Lx, Ly)
         call Collision(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
         if ( mod(it, frames) == 0 ) then
             !call WriteVfield(Lx, Ly, avg_vel_site, it / frames)
