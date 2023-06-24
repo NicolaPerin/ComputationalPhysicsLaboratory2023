@@ -1,22 +1,22 @@
 module Variables
     implicit none
     
-    ! Define directions as 8-bit integers
-    integer, parameter :: RI     = 1  ! 00000001
-    integer, parameter :: RD     = 2  ! 00000010
-    integer, parameter :: LD     = 4  ! 00000100
-    integer, parameter :: LE     = 8  ! 00001000
-    integer, parameter :: LU     = 16 ! 00010000
-    integer, parameter :: RU     = 32 ! 00100000
-    integer, parameter :: FULL   = 63 ! 00111111
+    ! Encode the possible directions using the first 6 bits of an 8 bit integer
+    ! 8 bit integers have been use whenever possible
+    integer(1), parameter :: RI     = 1  ! 00 000001
+    integer(1), parameter :: RD     = 2  ! 00 000010
+    integer(1), parameter :: LD     = 4  ! 00 000100
+    integer(1), parameter :: LE     = 8  ! 00 001000
+    integer(1), parameter :: LU     = 16 ! 00 010000
+    integer(1), parameter :: RU     = 32 ! 00 100000
+    integer(1), parameter :: FULL   = 63 ! 00 111111
 
-    ! define the collision rules
-    integer, dimension(6), parameter :: dir = (/RI, RD, LD, LE, LU, RU/)
-    integer, parameter :: NUM_RULES = 2**6
-    integer, parameter :: NUM_DIRS = 6
-    integer, dimension(0: NUM_RULES - 1) :: rules1 = 0, rules2 = 0
+    ! Useful quantities
+    integer(1), dimension(6), parameter :: dir = (/RI, RD, LD, LE, LU, RU/)
+    integer(1), parameter :: NUM_RULES = 2**6 ! Size of the lookup table (basically 64 bytes)
+    integer(1), dimension(0: NUM_RULES - 1) :: rules1 = 0, rules2 = 0
 
-    real :: start_time, end_time
+    real :: start_time, end_time ! For profiling
     real, parameter :: density = 0.5, SQRT3_OVER2 = sqrt(3.0) / 2.0
     real, dimension(6), parameter :: ux = (/1.0, 0.5, -0.5, -1.0, -0.5, 0.5/)
     real, dimension(6), parameter :: uy = (/0.0, -SQRT3_OVER2, -SQRT3_OVER2, 0.0, SQRT3_OVER2, SQRT3_OVER2/)
@@ -29,7 +29,7 @@ module Variables
 
     subroutine InitRules() ! Two sets of rules
 
-        integer :: i
+        integer(1) :: i
 
         ! Set default rules: the particle keeps moving unperturbed if no collision
         do i = 0, NUM_RULES - 1
@@ -41,9 +41,9 @@ module Variables
         rules1(ior(RU, LD)) = ior(LU, RD) ! rule(36) = 18
         rules1(ior(LU, RD)) = ior(LE, RI) ! rule(18) = 9
 
-        rules2(ior(LE, RI)) = ior(LU, RD)
-        rules2(ior(LU, RD)) = ior(RU, LD)
-        rules2(ior(RU, LD)) = ior(LE, RI) 
+        rules2(ior(LE, RI)) = ior(LU, RD) ! rule(9)  = 18
+        rules2(ior(LU, RD)) = ior(RU, LD) ! rule(18) = 36
+        rules2(ior(RU, LD)) = ior(LE, RI) ! rule(36) = 9
 
         ! three particles zero-momentum rules
         rules1(ior(ior(LU, LD), RI)) = ior(ior(RU, LE), RD) ! rule(21) = 42
@@ -65,7 +65,7 @@ module printing
     subroutine stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site)
         integer :: i, j
         integer, intent(in) :: Lx, Ly
-        integer, dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
+        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
         real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
         do i = 0, Lx - 1
             do j = 0, Ly - 1
@@ -92,17 +92,17 @@ module printing
 end module printing
 
 module Dynamic
-    use iso_fortran_env
+    use iso_fortran_env ! Needed to perform type casting to int8 at line 191
     use Variables
     implicit none
 
     contains
 
-    subroutine InitLattice1(Lattice, Lx, Ly)
+    subroutine InitLattice(Lattice, Lx, Ly)
         integer :: i, j
         real :: r
         integer, intent(in) :: Lx, Ly
-        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
+        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice
 
         do i = 0, Lx - 1
             do j = 0, Ly - 1
@@ -119,47 +119,14 @@ module Dynamic
             end do
         end do
 
-    end subroutine InitLattice1
+    end subroutine InitLattice
 
-    subroutine InitLattice2(Lattice, Lx, Ly)
-        integer :: i, j
-        real :: r
-        integer, intent(in) :: Lx, Ly
-        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
-
-        do i = Lx / 4 - 1, Lx / 2 + Lx / 10
-            do j = 0, Ly / 4 - 1
-                Lattice(i, j) = RI
-            end do
-        end do
-        do i = Lx / 2 - Lx / 10, 3 * Lx / 4
-            do j = 3 * Ly / 4, Ly - 1
-                Lattice(i, j) = LE
-            end do
-        end do
-
-    end subroutine InitLattice2
-
-    subroutine InitLattice3(Lattice, Lx, Ly)
-        integer :: i, j
-        real :: r
-        integer, intent(in) :: Lx, Ly
-        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
-
-        do i = 3 * Lx / 8, 5 * Lx / 8
-            do j = 3* Ly / 8, 5 * Ly / 8
-                Lattice(i, j) = FULL
-            end do
-        end do
-
-    end subroutine InitLattice3
-
-    subroutine Collision(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
+    subroutine Evolve(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
 
         integer :: i, j, k, l
         real :: block_sum_x, block_sum_y, norm
         integer, intent(in) :: Lx, Ly, cell_size
-        integer, dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
+        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
         real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site, avg_vel_cell
 
         ! Streaming step: the particles in the lattice are moved to their neighboring lattice sites 
@@ -170,6 +137,7 @@ module Dynamic
         ! one half a Lattice spacing from the odd rows, 
         ! we need to treat odd and even rows separately.
 
+        ! These are the six nearest neighbours of site i,j for the two cases:
         !                       RI        RD         LD         LE         LU         RU
         ! Odd row: (i, j) -> (i, j+1), (i+1, j), (i+1, j-1), (i, j-1), (i-1, j-1), (i-1, j)
         ! Even row:(i, j) -> (i, j+1), (i+1, j+1), (i+1, j), (i, j-1), (i-1, j), (i-1, j+1)
@@ -177,28 +145,36 @@ module Dynamic
         do j = 0, Ly - 1
             do i = 0, Lx - 1
                 if (mod(i,2) == 0) then ! even row
-                    newLattice(i,mod(j+1,Ly)) = ior(newLattice(i,mod(j+1,Ly)), iand(lattice(i,j), RI))      ! RI direction
-                    newLattice(mod(i+1,Lx),mod(j+1,Ly)) = ior(newLattice(mod(i+1,Lx),mod(j+1,Ly)), iand(lattice(i,j), RD))  ! RD direction
-                    newLattice(mod(i+1,Lx),j) = ior(newLattice(mod(i+1,Lx),j), iand(lattice(i,j), LD))      ! LD direction
-                    newLattice(i,mod(j-1+Ly,Ly)) = ior(newLattice(i,mod(j-1+Ly,Ly)), iand(lattice(i,j), LE))      ! LE direction
-                    newLattice(mod(i-1+Lx,Lx),j) = ior(newLattice(mod(i-1+Lx,Lx),j), iand(lattice(i,j), LU))      ! LU direction
-                    newLattice(mod(i-1+Lx,Lx),mod(j+1,Ly)) = ior(newLattice(mod(i-1+Lx,Lx),mod(j+1,Ly)), iand(lattice(i,j), RU))  ! RU direction
-                else ! odd row
-                    newLattice(i,mod(j+1,Ly)) = ior(newLattice(i,mod(j+1,Ly)), iand(lattice(i,j), RI))      ! RI direction
-                    newLattice(mod(i+1,Lx),j) = ior(newLattice(mod(i+1,Lx),j), iand(lattice(i,j), RD))      ! RD direction
-                    newLattice(mod(i+1,Lx),mod(j-1+Ly,Ly)) = ior(newLattice(mod(i+1,Lx),mod(j-1+Ly,Ly)), iand(lattice(i,j), LD))  ! LD direction
-                    newLattice(i,mod(j-1+Ly,Ly)) = ior(newLattice(i,mod(j-1+Ly,Ly)), iand(lattice(i,j), LE))      ! LE direction
+                    ! RIGHT
+                    newLattice(i,mod(j+1,Ly)) = ior(newLattice(i,mod(j+1,Ly)), iand(lattice(i,j), RI))
+                    ! RIGHT DOWN
+                    newLattice(mod(i+1,Lx),mod(j+1,Ly)) = ior(newLattice(mod(i+1,Lx),mod(j+1,Ly)), iand(lattice(i,j), RD))
+                    ! LEFT DOWN
+                    newLattice(mod(i+1,Lx),j) = ior(newLattice(mod(i+1,Lx),j), iand(lattice(i,j), LD))
+                    ! LEFT
+                    newLattice(i,mod(j-1+Ly,Ly)) = ior(newLattice(i,mod(j-1+Ly,Ly)), iand(lattice(i,j), LE))
+                    ! LEFT UP
+                    newLattice(mod(i-1+Lx,Lx),j) = ior(newLattice(mod(i-1+Lx,Lx),j), iand(lattice(i,j), LU))
+                    ! RIGHT UP
+                    newLattice(mod(i-1+Lx,Lx),mod(j+1,Ly)) = ior(newLattice(mod(i-1+Lx,Lx),mod(j+1,Ly)), iand(lattice(i,j), RU))
+
+                else ! odd row (same but with different neighbour indices)
+                    newLattice(i,mod(j+1,Ly)) = ior(newLattice(i,mod(j+1,Ly)), iand(lattice(i,j), RI))
+                    newLattice(mod(i+1,Lx),j) = ior(newLattice(mod(i+1,Lx),j), iand(lattice(i,j), RD))
+                    newLattice(mod(i+1,Lx),mod(j-1+Ly,Ly)) = ior(newLattice(mod(i+1,Lx),mod(j-1+Ly,Ly)), iand(lattice(i,j), LD))
+                    newLattice(i,mod(j-1+Ly,Ly)) = ior(newLattice(i,mod(j-1+Ly,Ly)), iand(lattice(i,j), LE))
                     newLattice(mod(i-1+Lx,Lx),mod(j-1+Ly,Ly)) = &
-                                ior(newLattice(mod(i-1+Lx,Lx),mod(j-1+Ly,Ly)), iand(lattice(i,j), LU))  ! LU direction
-                    newLattice(mod(i-1+Lx,Lx),j) = ior(newLattice(mod(i-1+Lx,Lx),j), iand(lattice(i,j), RU))      ! RU direction
+                                ior(newLattice(mod(i-1+Lx,Lx),mod(j-1+Ly,Ly)), iand(lattice(i,j), LU))
+                    newLattice(mod(i-1+Lx,Lx),j) = ior(newLattice(mod(i-1+Lx,Lx),j), iand(lattice(i,j), RU))
                 end if
             end do
         end do
 
         ! Collision step: handle interactions between particles.
-        ! In this step, collisions between particles are resolved according to a predefined set of collision rules. 
-        ! Each collision rule defines the new particle configurations based on the current configurations of neighboring particles. 
-        ! The collision rules determine the outcome of particle interactions, including changes in particle directions and velocities.
+        ! In this step, collisions between particles are resolved according to the
+        ! predefined set of collision rules. Each collision rule defines the new particle configurations 
+        ! based on the configurations of the current lattice site.
+        ! We switch rule set between even and odd iterations to prevent chirality (particles turning in circles)
         
         do i = 0, Lx - 1
             do j = 0, Ly - 1
@@ -211,7 +187,9 @@ module Dynamic
                 ! Compute avg velocity components at current lattice site
                 vx = 0.; vy = 0.
                 do k = 0, 5
-                    if ( iand(Lattice(i, j), ishft(1, k)) /= 0 ) then
+                    ! If there is a particle going in a certain direction
+                    if ( iand(Lattice(i, j), ishft(int(1, int8), k)) /= 0 ) then
+                        ! Then add its velocity components to the total of the site
                         vx = vx + ux(k+1)
                         vy = vy + uy(k+1)
                     end if
@@ -221,7 +199,9 @@ module Dynamic
             end do
         end do
 
-        norm = real(cell_size * cell_size)
+        ! Now compute the 2D block average to reduce noise; this is what will be plotted as vector field
+        norm = 1. / real(cell_size * cell_size) ! computed just once here instead of inside the nested loop
+
         do k = 0, Lx / cell_size - 1
             do l = 0, Ly / cell_size - 1
                 block_sum_x = 0.0; block_sum_y = 0.0
@@ -231,11 +211,11 @@ module Dynamic
                         block_sum_y = block_sum_y + avg_vel_site(i, j, 2)
                     end do
                 end do
-                avg_vel_cell(k, l, 1) = block_sum_x / norm
-                avg_vel_cell(k, l, 2) = block_sum_y / norm
+                avg_vel_cell(k, l, 1) = block_sum_x * norm
+                avg_vel_cell(k, l, 2) = block_sum_y * norm
             end do
         end do
-    end subroutine Collision
+    end subroutine Evolve
 
     subroutine WriteVfield(Lx, Ly, avg_vel, it)
         integer :: i, j
@@ -263,7 +243,7 @@ program FHP1
     implicit none
 
     integer :: Lx, Ly, it, nit, cell_size, frames
-    integer, dimension(:,:), allocatable :: Lattice, newLattice
+    integer(1), dimension(:,:), allocatable :: Lattice, newLattice
     real, dimension(:,:,:), allocatable :: avg_vel_site, avg_vel_cell
 
     character(len=32) :: arg
@@ -284,21 +264,19 @@ program FHP1
     Lattice = 0; newLattice = 0; avg_vel_site = 0.; avg_vel_cell = 0.
     
     call InitRules() ! Create the collision rules
-    call InitLattice1(Lattice, Lx, Ly)
+    call InitLattice(Lattice, Lx, Ly)
 
     ! Evolution of the system
     call cpu_time(start_time)
     do it = 1, nit
-        !call Streaming(lattice, newLattice, Lx, Ly)
-        call Collision(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
-        if ( mod(it, frames) == 0 ) then
-            !call WriteVfield(Lx, Ly, avg_vel_site, it / frames)
+        call Evolve(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
+        if ( mod(it, frames) == 0 ) then ! Writing to file is slow!!!
             call WriteVfield(Lx/cell_size, Ly/cell_size, avg_vel_cell, it / frames)
         end if
     end do
     call cpu_time(end_time)
     print*, "Evolve time:", end_time - start_time
 
-    !call stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site)
+    !call stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site) ! This was for debugging
 
 end program FHP1
