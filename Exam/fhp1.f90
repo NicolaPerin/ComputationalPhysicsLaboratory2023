@@ -16,7 +16,7 @@ module Variables
     integer(1), parameter :: NUM_RULES = 2**6 ! Size of the lookup table (basically 64 bytes)
     integer(1), dimension(0: NUM_RULES - 1) :: rules1 = 0, rules2 = 0
 
-    real :: start_time, end_time ! For profiling
+    double precision :: start_time, end_time ! For profiling
     real, parameter :: density = 0.5, SQRT3_OVER2 = sqrt(3.0) / 2.0
     real, dimension(6), parameter :: ux = (/1.0, 0.5, -0.5, -1.0, -0.5, 0.5/)
     real, dimension(6), parameter :: uy = (/0.0, -SQRT3_OVER2, -SQRT3_OVER2, 0.0, SQRT3_OVER2, SQRT3_OVER2/)
@@ -92,7 +92,7 @@ module printing
 end module printing
 
 module Dynamic
-    use iso_fortran_env ! Needed to perform type casting to int8 at line 191
+    use iso_fortran_env ! Needed to perform type casting to int8 at line 195
     use Variables
     implicit none
 
@@ -142,6 +142,7 @@ module Dynamic
         ! Odd row: (i, j) -> (i, j+1), (i+1, j), (i+1, j-1), (i, j-1), (i-1, j-1), (i-1, j)
         ! Even row:(i, j) -> (i, j+1), (i+1, j+1), (i+1, j), (i, j-1), (i-1, j), (i-1, j+1)
 
+        !$OMP PARALLEL DO DEFAULT(shared) COLLAPSE(2)
         do j = 0, Ly - 1
             do i = 0, Lx - 1
                 if (mod(i,2) == 0) then ! even row
@@ -169,6 +170,7 @@ module Dynamic
                 end if
             end do
         end do
+        !$OMP END PARALLEL DO
 
         ! Collision step: handle interactions between particles.
         ! In this step, collisions between particles are resolved according to the
@@ -176,6 +178,7 @@ module Dynamic
         ! based on the configurations of the current lattice site.
         ! We switch rule set between even and odd iterations to prevent chirality (particles turning in circles)
         
+        !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(i, j, k, vx, vy)
         do i = 0, Lx - 1
             do j = 0, Ly - 1
                 if ( mod(i * (Lx - 1) + j, 2) == 0  ) then
@@ -186,6 +189,7 @@ module Dynamic
                 newLattice(i, j) = 0
                 ! Compute avg velocity components at current lattice site
                 vx = 0.; vy = 0.
+
                 do k = 0, 5
                     ! If there is a particle going in a certain direction
                     if ( iand(Lattice(i, j), ishft(int(1, int8), k)) /= 0 ) then
@@ -198,13 +202,16 @@ module Dynamic
                 avg_vel_site(i,j,2) = vy / 6.
             end do
         end do
+        !$OMP END PARALLEL DO
 
         ! Now compute the 2D block average to reduce noise; this is what will be plotted as vector field
         norm = 1. / real(cell_size * cell_size) ! computed just once here instead of inside the nested loop
 
+        !$OMP PARALLEL DO DEFAULT(shared) PRIVATE(k, l, i, j, block_sum_x, block_sum_y)
         do k = 0, Lx / cell_size - 1
             do l = 0, Ly / cell_size - 1
                 block_sum_x = 0.0; block_sum_y = 0.0
+
                 do i = k * cell_size, (k + 1) * cell_size - 1
                     do j = l * cell_size, (l + 1) * cell_size - 1
                         block_sum_x = block_sum_x + avg_vel_site(i, j, 1)
@@ -215,6 +222,7 @@ module Dynamic
                 avg_vel_cell(k, l, 2) = block_sum_y * norm
             end do
         end do
+        !$OMP END PARALLEL DO
     end subroutine Evolve
 
     subroutine WriteVfield(Lx, Ly, avg_vel, it)
@@ -240,6 +248,7 @@ program FHP1
     use Variables
     use printing
     use Dynamic
+    use omp_lib
     implicit none
 
     integer :: Lx, Ly, it, nit, cell_size, frames
@@ -267,14 +276,17 @@ program FHP1
     call InitLattice(Lattice, Lx, Ly)
 
     ! Evolution of the system
-    call cpu_time(start_time)
+    !call cpu_time(start_time)
+    start_time = omp_get_wtime()
     do it = 1, nit
         call Evolve(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size)
         if ( mod(it, frames) == 0 ) then ! Writing to file is slow!!!
+            !$acc update host(avg_vel_site, avg_vel_cell)
             call WriteVfield(Lx/cell_size, Ly/cell_size, avg_vel_cell, it / frames)
         end if
     end do
-    call cpu_time(end_time)
+    !call cpu_time(end_time)
+    end_time = omp_get_wtime()
     print*, "Evolve time:", end_time - start_time
 
     !call stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site) ! This was for debugging
