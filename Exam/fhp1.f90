@@ -18,7 +18,7 @@ module Variables
     integer(1), dimension(0: NUM_RULES) :: rules1 = 0, rules2 = 0
 
     double precision :: start_time, end_time ! For profiling
-    real, parameter :: density = 0.6, SQRT3_OVER2 = sqrt(3.0) / 2.0
+    real, parameter :: density = 0.4, SQRT3_OVER2 = sqrt(3.0) / 2.0
     real, dimension(6), parameter :: ux = (/1.0, 0.5, -0.5, -1.0, -0.5, 0.5/)
     real, dimension(6), parameter :: uy = (/0.0, -SQRT3_OVER2, -SQRT3_OVER2, 0.0, SQRT3_OVER2, SQRT3_OVER2/)
     real :: vx = 0. ! averaged x velocity for every site configuration
@@ -31,7 +31,6 @@ module Variables
     subroutine InitRules() ! Two sets of rules
 
         integer(1) :: i
-        integer(1) :: highBits, lowBits
 
         ! Set default rules: the particle keeps moving unperturbed if no collision
         do i = 0, NUM_RULES - 1
@@ -137,18 +136,21 @@ module Dynamic
 
     subroutine InitLattice2(Lattice, Lx, Ly)
         integer :: i, j
-        real :: r
         integer, intent(in) :: Lx, Ly
+        real :: r
         integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice
 
-        do i = Lx / 2, Lx / 2 + 1
-            do j = 0, Ly / 8
-                Lattice(i,j) = RU
+        do i = 0, Lx - 1
+            do j = 0, Ly - 1
+                call random_number(r)
+                if (r < density / 4.0) then
+                    Lattice(i,j) = ior(ior(RU, LE), RD)
+                else if (r >= density / 4.0 .and. r < density / 2.0) then
+                    Lattice(i,j) = ior(ior(LU, LD), RI)
+                else
+                    Lattice(i,j) = 0
+                end if
             end do
-        end do
-
-        do j = 0, Ly - 1
-            Lattice(0,j) = B; Lattice(Lx-1, j) = B
         end do
 
     end subroutine InitLattice2
@@ -219,6 +221,7 @@ module Dynamic
                 newLattice(i, j) = 0
 
                 ! Compute avg velocity components at current lattice site (only when we want to save)
+                ! For some reason if i call the subroutine ComputeMomentum() the code slows down a lot
                 if ( do_i_write ) then
                     vx = 0.; vy = 0.
                     do k = 0, 5
@@ -235,9 +238,9 @@ module Dynamic
             end do
         end do
 
-        do j = 0, Ly - 1 ! I'm sure there is a better way of doing it
-            newLattice(0,j) = B; newLattice(Lx-1, j) = B
-        end do
+        !do j = 0, Ly - 1 ! I'm sure there is a better way of doing this
+        !    newLattice(0,j) = B; newLattice(Lx-1, j) = B
+        !end do
 
         ! Now compute the 2D block average to reduce noise; this is what will be plotted as vector field
         norm = 1. / real(cell_size * cell_size) ! computed just once here instead of inside the nested loop
@@ -277,6 +280,29 @@ module Dynamic
 
     end subroutine WriteVfield
 
+    subroutine ComputeMomentum(Lattice, Lx, Ly, avg_vel_site)
+        integer :: i, j, k
+        integer, intent(in) :: Lx, Ly
+        integer(1), dimension(:,:), allocatable, intent(in) :: Lattice
+        real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
+        avg_vel_site = 0.
+        do i = 0, Lx - 1
+            do j = 0, Ly - 1
+                vx = 0.; vy = 0.
+                do k = 0, 5
+                    ! If there is a particle going in a certain direction
+                    if ( iand(Lattice(i, j), ishft(int(1, int8), k)) /= 0 ) then
+                        ! Then add its velocity components to the total of the site
+                        vx = vx + ux(k+1)
+                        vy = vy + uy(k+1)
+                    end if
+                end do
+                avg_vel_site(i,j,1) = vx / 6.
+                avg_vel_site(i,j,2) = vy / 6.
+            end do
+        end do
+    end subroutine ComputeMomentum
+
 end module Dynamic
 
 program FHP1
@@ -288,7 +314,7 @@ program FHP1
     integer :: Lx, Ly, it, nit, cell_size, frames
     integer(1), dimension(:,:), allocatable :: Lattice, newLattice
     real, dimension(:,:,:), allocatable :: avg_vel_site, avg_vel_cell
-    integer :: i
+    real :: sum_x, sum_y
     logical :: do_i_write
 
     character(len=32) :: arg
@@ -309,7 +335,14 @@ program FHP1
     Lattice = 0; newLattice = 0; avg_vel_site = 0.; avg_vel_cell = 0.
     
     call InitRules() ! Create the collision rules
-    call InitLattice(Lattice, Lx, Ly)
+    call InitLattice2(Lattice, Lx, Ly)
+
+    ! Compute average site momentum on both directions
+    call ComputeMomentum(Lattice, Lx, Ly, avg_vel_site)
+    sum_x = sum(avg_vel_site(:,:,1)) / real(Lx * Ly)
+    sum_y = sum(avg_vel_site(:,:,2)) / real(Lx * Ly)
+    print*, "Initial momentum of the grid:", sum_x, sum_y
+    sum_x = 0; sum_y = 0; avg_vel_site = 0;
 
     ! Evolution of the system
     call cpu_time(start_time)
@@ -323,9 +356,11 @@ program FHP1
     call cpu_time(end_time)
     print*, "Evolve time:", end_time - start_time
 
-    do i = 0, NUM_RULES
-        !print*, i, rules1(i), rules2(i)
-    end do
+    ! Compute the average site momentum at the end
+    call ComputeMomentum(Lattice, Lx, Ly, avg_vel_site)
+    sum_x = sum(avg_vel_site(:,:,1)) / real(Lx * Ly)
+    sum_y = sum(avg_vel_site(:,:,2)) / real(Lx * Ly)
+    print*, "Final momentum of the grid:", sum_x, sum_y
 
     !call stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site) ! This was for debugging
 
