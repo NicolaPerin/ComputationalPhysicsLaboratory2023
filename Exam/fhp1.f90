@@ -3,22 +3,23 @@ module Variables
     
     ! Encode the possible directions using the first 6 bits of an 8 bit integer
     ! 8 bit integers have been use whenever possible
-    integer(1), parameter :: RI     = 1  ! 00 000001
-    integer(1), parameter :: RD     = 2  ! 00 000010
-    integer(1), parameter :: LD     = 4  ! 00 000100
-    integer(1), parameter :: LE     = 8  ! 00 001000
-    integer(1), parameter :: LU     = 16 ! 00 010000
-    integer(1), parameter :: RU     = 32 ! 00 100000
-    integer(1), parameter :: B      = 64 ! 01 000000
-    integer(1), parameter :: FULL   = 63 ! 00 111111
+    integer, parameter :: RI     = 1  ! 00 000001
+    integer, parameter :: RD     = 2  ! 00 000010
+    integer, parameter :: LD     = 4  ! 00 000100
+    integer, parameter :: LE     = 8  ! 00 001000
+    integer, parameter :: LU     = 16 ! 00 010000
+    integer, parameter :: RU     = 32 ! 00 100000
+    integer, parameter :: B      = 64 ! 01 000000
+    integer, parameter :: VB      = 128 ! 10 000000
+    integer, parameter :: FULL   = 63 ! 00 111111
 
     ! Useful quantities
-    integer(1), dimension(6), parameter :: dir = (/RI, RD, LD, LE, LU, RU/)
-    integer(1), parameter :: NUM_RULES = 2**7 -1 ! Size of the lookup table (basically 64 bytes)
-    integer(1), dimension(0: NUM_RULES) :: rules1 = 0, rules2 = 0
+    integer, dimension(6), parameter :: dir = (/RI, RD, LD, LE, LU, RU/)
+    integer, parameter :: NUM_RULES = 2**8 -1 ! Size of the lookup table (basically 64 bytes)
+    integer, dimension(0: NUM_RULES) :: rules1 = 0, rules2 = 0
 
     double precision :: start_time, end_time ! For profiling
-    real, parameter :: density = 0.4, SQRT3_OVER2 = sqrt(3.0) / 2.0
+    real, parameter :: density = 0.5, SQRT3_OVER2 = sqrt(3.0) / 2.0
     real, dimension(6), parameter :: ux = (/1.0, 0.5, -0.5, -1.0, -0.5, 0.5/)
     real, dimension(6), parameter :: uy = (/0.0, -SQRT3_OVER2, -SQRT3_OVER2, 0.0, SQRT3_OVER2, SQRT3_OVER2/)
     real :: vx = 0. ! averaged x velocity for every site configuration
@@ -30,7 +31,7 @@ module Variables
 
     subroutine InitRules() ! Two sets of rules
 
-        integer(1) :: i
+        integer :: i
 
         ! Set default rules: the particle keeps moving unperturbed if no collision
         do i = 0, NUM_RULES - 1
@@ -61,6 +62,13 @@ module Variables
         rules1(ior(B,LU)) = ior(B,LD); rules2(ior(B,LU)) = ior(B,LD)
         rules1(ior(B,RU)) = ior(B,RD); rules2(ior(B,RU)) = ior(B,RD)
 
+        rules1(ior(VB,RI)) = ior(VB,LE); rules2(ior(VB,RI)) = ior(VB,LE)
+        rules1(ior(VB,RD)) = ior(VB,LD); rules2(ior(VB,RD)) = ior(VB,LD)
+        rules1(ior(VB,LD)) = ior(VB,RD); rules2(ior(VB,LD)) = ior(VB,RD)
+        rules1(ior(VB,LE)) = ior(VB,RI); rules2(ior(VB,LE)) = ior(VB,RI)
+        rules1(ior(VB,LU)) = ior(VB,RU); rules2(ior(VB,LU)) = ior(VB,RU)
+        rules1(ior(VB,RU)) = ior(VB,LU); rules2(ior(VB,RU)) = ior(VB,LU)
+
     end subroutine InitRules
 
 end module Variables
@@ -74,7 +82,7 @@ module printing
     subroutine stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site)
         integer :: i, j
         integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
         real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
         do i = 0, Lx - 1
             do j = 0, Ly - 1
@@ -111,7 +119,7 @@ module Dynamic
         integer :: i, j
         real :: r
         integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
 
         do i = 1, Lx - 2
             do j = 0, Ly / 2
@@ -132,13 +140,16 @@ module Dynamic
             Lattice(0,j) = B; Lattice(Lx-1, j) = B
         end do
 
+        do i = Lx / 4, 3 * Lx / 4
+            Lattice(i, Ly / 2) = VB
+        end do
     end subroutine InitLattice
 
     subroutine InitLattice2(Lattice, Lx, Ly)
         integer :: i, j
         integer, intent(in) :: Lx, Ly
         real :: r
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
 
         do i = 0, Lx - 1
             do j = 0, Ly - 1
@@ -161,7 +172,7 @@ module Dynamic
         real :: block_sum_x, block_sum_y, norm
         integer, intent(in) :: Lx, Ly, cell_size
         logical, intent(in) :: do_i_write
-        integer(1), dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
+        integer, dimension(:,:), allocatable, intent(inout) :: Lattice, newLattice
         real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site, avg_vel_cell
 
         ! Streaming step: the particles in the lattice are moved to their neighboring lattice sites 
@@ -226,7 +237,7 @@ module Dynamic
                     vx = 0.; vy = 0.
                     do k = 0, 5
                         ! If there is a particle going in a certain direction
-                        if ( iand(Lattice(i, j), ishft(int(1, int8), k)) /= 0 ) then
+                        if ( iand(Lattice(i, j), ishft(1, k)) /= 0 ) then
                             ! Then add its velocity components to the total of the site
                             vx = vx + ux(k+1)
                             vy = vy + uy(k+1)
@@ -238,9 +249,13 @@ module Dynamic
             end do
         end do
 
-        !do j = 0, Ly - 1 ! I'm sure there is a better way of doing this
-        !    newLattice(0,j) = B; newLattice(Lx-1, j) = B
-        !end do
+        do j = 0, Ly - 1 ! I'm sure there is a better way of doing this
+            newLattice(0,j) = B; newLattice(Lx-1, j) = B
+        end do
+
+        do i = Lx / 4, 3* Lx / 4
+            newLattice(i, Ly / 2) = VB
+        end do
 
         ! Now compute the 2D block average to reduce noise; this is what will be plotted as vector field
         norm = 1. / real(cell_size * cell_size) ! computed just once here instead of inside the nested loop
@@ -283,7 +298,7 @@ module Dynamic
     subroutine ComputeMomentum(Lattice, Lx, Ly, avg_vel_site)
         integer :: i, j, k
         integer, intent(in) :: Lx, Ly
-        integer(1), dimension(:,:), allocatable, intent(in) :: Lattice
+        integer, dimension(:,:), allocatable, intent(in) :: Lattice
         real, dimension(:,:,:), allocatable, intent(inout) :: avg_vel_site
         avg_vel_site = 0.
         do i = 0, Lx - 1
@@ -291,7 +306,7 @@ module Dynamic
                 vx = 0.; vy = 0.
                 do k = 0, 5
                     ! If there is a particle going in a certain direction
-                    if ( iand(Lattice(i, j), ishft(int(1, int8), k)) /= 0 ) then
+                    if ( iand(Lattice(i, j), ishft(1, k)) /= 0 ) then
                         ! Then add its velocity components to the total of the site
                         vx = vx + ux(k+1)
                         vy = vy + uy(k+1)
@@ -305,14 +320,14 @@ module Dynamic
 
 end module Dynamic
 
-program FHP1
+program prova
     use Variables
     use printing
     use Dynamic
     implicit none
 
     integer :: Lx, Ly, it, nit, cell_size, frames
-    integer(1), dimension(:,:), allocatable :: Lattice, newLattice
+    integer, dimension(:,:), allocatable :: Lattice, newLattice
     real, dimension(:,:,:), allocatable :: avg_vel_site, avg_vel_cell
     real :: sum_x, sum_y
     logical :: do_i_write
@@ -335,7 +350,7 @@ program FHP1
     Lattice = 0; newLattice = 0; avg_vel_site = 0.; avg_vel_cell = 0.
     
     call InitRules() ! Create the collision rules
-    call InitLattice2(Lattice, Lx, Ly)
+    call InitLattice(Lattice, Lx, Ly)
 
     ! Compute average site momentum on both directions
     call ComputeMomentum(Lattice, Lx, Ly, avg_vel_site)
@@ -364,4 +379,4 @@ program FHP1
 
     !call stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site) ! This was for debugging
 
-end program FHP1
+end program prova
