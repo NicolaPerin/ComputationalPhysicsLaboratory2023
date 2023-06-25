@@ -1,5 +1,3 @@
-.PHONY: all clean flush
-
 FC = gfortran
 FFLAGS = -O2 -ftree-vectorize -fcheck=all -Wall
 
