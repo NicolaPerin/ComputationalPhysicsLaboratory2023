@@ -122,7 +122,7 @@ module Dynamic
         integer, dimension(:,:), allocatable, intent(inout) :: Lattice
 
         do i = 1, Lx - 2
-            do j = 0, Ly / 2
+            do j = 0, Ly - 1
                 call random_number(r)
                 if (r < density / 8.0) then
                     Lattice(i, j) = ior(ior(RU, LE), RD)
@@ -140,7 +140,7 @@ module Dynamic
             Lattice(0,j) = B; Lattice(Lx-1, j) = B
         end do
 
-        do i = Lx / 4, 3 * Lx / 4
+        do i = Lx / 3, 2 * Lx / 3 - 1
             Lattice(i, Ly / 2) = VB
         end do
     end subroutine InitLattice
@@ -253,7 +253,7 @@ module Dynamic
             newLattice(0,j) = B; newLattice(Lx-1, j) = B
         end do
 
-        do i = Lx / 4, 3* Lx / 4
+        do i = Lx / 3, 2 * Lx / 3 - 1
             newLattice(i, Ly / 2) = VB
         end do
 
@@ -320,7 +320,7 @@ module Dynamic
 
 end module Dynamic
 
-program prova
+program lattice_gas_automata
     use Variables
     use printing
     use Dynamic
@@ -379,4 +379,4 @@ program prova
 
     !call stampatutto(Lattice, newLattice, Lx, Ly, avg_vel_site) ! This was for debugging
 
-end program prova
+end program lattice_gas_automata
