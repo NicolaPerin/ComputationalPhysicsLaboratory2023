@@ -1,7 +1,7 @@
 module Variables
     implicit none
     
-    ! Encode the possible directions using the first 6 bits of an 8 bit integer
+    ! Encode the possible directions using the first 6 bits of an integer
     ! 8 bit integers have been use whenever possible
     integer, parameter :: RI     = 1  ! 00 000001
     integer, parameter :: RD     = 2  ! 00 000010
@@ -9,9 +9,8 @@ module Variables
     integer, parameter :: LE     = 8  ! 00 001000
     integer, parameter :: LU     = 16 ! 00 010000
     integer, parameter :: RU     = 32 ! 00 100000
-    integer, parameter :: B      = 64 ! 01 000000
-    integer, parameter :: VB      = 128 ! 10 000000
-    integer, parameter :: FULL   = 63 ! 00 111111
+    integer, parameter :: HB      = 64 ! 01 000000 ! horizontal barrier
+    integer, parameter :: VB     = 128! 10 000000 ! vertical barrier
 
     ! Useful quantities
     integer, dimension(6), parameter :: dir = (/RI, RD, LD, LE, LU, RU/)
@@ -54,13 +53,13 @@ module Variables
         rules2(ior(ior(LU, LD), RI)) = ior(ior(RU, LE), RD) ! rule(21) = 42
         rules2(ior(ior(RU, LE), RD)) = ior(ior(LU, LD), RI) ! rule(42) = 21
 
-        ! Add rules to bounce back at barriers
-        rules1(ior(B,RI)) = ior(B,LE); rules2(ior(B,RI)) = ior(B,LE)
-        rules1(ior(B,RD)) = ior(B,RU); rules2(ior(B,RD)) = ior(B,RU)
-        rules1(ior(B,LD)) = ior(B,LU); rules2(ior(B,LD)) = ior(B,LU)
-        rules1(ior(B,LE)) = ior(B,RI); rules2(ior(B,LE)) = ior(B,RI)
-        rules1(ior(B,LU)) = ior(B,LD); rules2(ior(B,LU)) = ior(B,LD)
-        rules1(ior(B,RU)) = ior(B,RD); rules2(ior(B,RU)) = ior(B,RD)
+        ! Add rules to HBounce HBack at HBarriers
+        rules1(ior(HB,RI)) = ior(HB,LE); rules2(ior(HB,RI)) = ior(HB,LE)
+        rules1(ior(HB,RD)) = ior(HB,RU); rules2(ior(HB,RD)) = ior(HB,RU)
+        rules1(ior(HB,LD)) = ior(HB,LU); rules2(ior(HB,LD)) = ior(HB,LU)
+        rules1(ior(HB,LE)) = ior(HB,RI); rules2(ior(HB,LE)) = ior(HB,RI)
+        rules1(ior(HB,LU)) = ior(HB,LD); rules2(ior(HB,LU)) = ior(HB,LD)
+        rules1(ior(HB,RU)) = ior(HB,RD); rules2(ior(HB,RU)) = ior(HB,RD)
 
         rules1(ior(VB,RI)) = ior(VB,LE); rules2(ior(VB,RI)) = ior(VB,LE)
         rules1(ior(VB,RD)) = ior(VB,LD); rules2(ior(VB,RD)) = ior(VB,LD)
@@ -73,7 +72,7 @@ module Variables
 
 end module Variables
 
-module printing
+module printing ! Just for debugging
     use Variables
     implicit none
 
@@ -109,7 +108,6 @@ module printing
 end module printing
 
 module Dynamic
-    use iso_fortran_env ! Needed to perform type casting to int8 at line 195
     use Variables
     implicit none
 
@@ -137,34 +135,13 @@ module Dynamic
         end do
 
         do j = 0, Ly - 1
-            Lattice(0,j) = B; Lattice(Lx-1, j) = B
+            Lattice(0,j) = HB; Lattice(Lx-1, j) = HB
         end do
 
         do i = Lx / 3, 2 * Lx / 3 - 1
             Lattice(i, Ly / 2) = VB
         end do
     end subroutine InitLattice
-
-    subroutine InitLattice2(Lattice, Lx, Ly)
-        integer :: i, j
-        integer, intent(in) :: Lx, Ly
-        real :: r
-        integer, dimension(:,:), allocatable, intent(inout) :: Lattice
-
-        do i = 0, Lx - 1
-            do j = 0, Ly - 1
-                call random_number(r)
-                if (r < density / 4.0) then
-                    Lattice(i,j) = ior(ior(RU, LE), RD)
-                else if (r >= density / 4.0 .and. r < density / 2.0) then
-                    Lattice(i,j) = ior(ior(LU, LD), RI)
-                else
-                    Lattice(i,j) = 0
-                end if
-            end do
-        end do
-
-    end subroutine InitLattice2
 
     subroutine Evolve(Lattice, newLattice, Lx, Ly, avg_vel_site, avg_vel_cell, cell_size, do_i_write)
 
@@ -250,7 +227,7 @@ module Dynamic
         end do
 
         do j = 0, Ly - 1 ! I'm sure there is a better way of doing this
-            newLattice(0,j) = B; newLattice(Lx-1, j) = B
+            newLattice(0,j) = HB; newLattice(Lx-1, j) = HB
         end do
 
         do i = Lx / 3, 2 * Lx / 3 - 1
